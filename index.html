@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple 3D Game</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            font-family: Arial, sans-serif;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background-color: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #score {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            background-color: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            background-color: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px 2px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        WASD or Arrow Keys to move<br>
+        Space to jump<br>
+        Collect the spinning cubes<br>
+        Avoid the red obstacles
+    </div>
+    <div id="score">Score: 0</div>
+    <div id="gameOver">
+        <h2>Game Over!</h2>
+        <p>Your Score: <span id="finalScore">0</span></p>
+        <button id="restartButton">Play Again</button>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Game variables
+        let scene, camera, renderer;
+        let player, ground;
+        let obstacles = [];
+        let collectibles = [];
+        let score = 0;
+        let playerSpeed = 0.1;
+        let jumpForce = 0.15;
+        let gravity = 0.005;
+        let playerVelocity = { x: 0, y: 0, z: 0 };
+        let isJumping = false;
+        let gameActive = true;
+        let keys = {};
+        
+        // Initialize the game
+        function init() {
+            // Create scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+            
+            // Create camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 3, 5);
+            camera.lookAt(0, 0, 0);
+            
+            // Create renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            
+            // Add lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 7);
+            scene.add(directionalLight);
+            
+            // Create ground
+            const groundGeometry = new THREE.BoxGeometry(20, 1, 40);
+            const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x33aa33 });
+            ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.position.y = -0.5;
+            ground.position.z = -10;
+            scene.add(ground);
+            
+            // Create player
+            const playerGeometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+            const playerMaterial = new THREE.MeshStandardMaterial({ color: 0x3333ff });
+            player = new THREE.Mesh(playerGeometry, playerMaterial);
+            player.position.y = 0.4;
+            player.position.z = 0;
+            scene.add(player);
+            
+            // Create initial obstacles and collectibles
+            createObstacles();
+            createCollectibles();
+            
+            // Set up event listeners
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('keydown', (e) => keys[e.key] = true);
+            window.addEventListener('keyup', (e) => keys[e.key] = false);
+            
+            // Restart button event
+            document.getElementById('restartButton').addEventListener('click', restartGame);
+            
+            // Start animation loop
+            animate();
+        }
+        
+        function createObstacles() {
+            // Remove existing obstacles
+            obstacles.forEach(obstacle => scene.remove(obstacle));
+            obstacles = [];
+            
+            // Create new obstacles
+            for (let i = 0; i < 15; i++) {
+                const obstacleGeometry = new THREE.BoxGeometry(
+                    Math.random() * 1 + 0.5,
+                    Math.random() * 1 + 0.5,
+                    Math.random() * 1 + 0.5
+                );
+                const obstacleMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+                const obstacle = new THREE.Mesh(obstacleGeometry, obstacleMaterial);
+                
+                // Position randomly along the track
+                obstacle.position.x = Math.random() * 14 - 7; // -7 to 7
+                obstacle.position.y = obstacle.geometry.parameters.height / 2;
+                obstacle.position.z = -Math.random() * 30 - 5; // -5 to -35
+                
+                scene.add(obstacle);
+                obstacles.push(obstacle);
+            }
+        }
+        
+        function createCollectibles() {
+            // Remove existing collectibles
+            collectibles.forEach(collectible => scene.remove(collectible));
+            collectibles = [];
+            
+            // Create new collectibles
+            for (let i = 0; i < 10; i++) {
+                const collectibleGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+                const collectibleMaterial = new THREE.MeshStandardMaterial({ color: 0xffff00 });
+                const collectible = new THREE.Mesh(collectibleGeometry, collectibleMaterial);
+                
+                // Position randomly along the track
+                collectible.position.x = Math.random() * 16 - 8; // -8 to 8
+                collectible.position.y = 0.5;
+                collectible.position.z = -Math.random() * 30 - 5; // -5 to -35
+                
+                scene.add(collectible);
+                collectibles.push(collectible);
+            }
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        function handleControls() {
+            // Handle keyboard controls
+            if (!gameActive) return;
+            
+            // Forward/backward movement
+            if (keys['w'] || keys['ArrowUp']) {
+                playerVelocity.z = -playerSpeed;
+            } else if (keys['s'] || keys['ArrowDown']) {
+                playerVelocity.z = playerSpeed;
+            } else {
+                playerVelocity.z = 0;
+            }
+            
+            // Left/right movement
+            if (keys['a'] || keys['ArrowLeft']) {
+                playerVelocity.x = -playerSpeed;
+            } else if (keys['d'] || keys['ArrowRight']) {
+                playerVelocity.x = playerSpeed;
+            } else {
+                playerVelocity.x = 0;
+            }
+            
+            // Jumping
+            if ((keys[' '] || keys['Space']) && !isJumping) {
+                playerVelocity.y = jumpForce;
+                isJumping = true;
+            }
+        }
+        
+        function checkCollisions() {
+            if (!gameActive) return;
+            
+            // Check for obstacle collisions
+            obstacles.forEach(obstacle => {
+                // Simple bounding box collision detection
+                if (boxCollision(player, obstacle)) {
+                    gameOver();
+                }
+            });
+            
+            // Check for collectible collisions
+            for (let i = collectibles.length - 1; i >= 0; i--) {
+                if (boxCollision(player, collectibles[i])) {
+                    scene.remove(collectibles[i]);
+                    collectibles.splice(i, 1);
+                    score += 10;
+                    document.getElementById('score').textContent = `Score: ${score}`;
+                    
+                    // Add new collectible if we collected one
+                    const collectibleGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+                    const collectibleMaterial = new THREE.MeshStandardMaterial({ color: 0xffff00 });
+                    const collectible = new THREE.Mesh(collectibleGeometry, collectibleMaterial);
+                    
+                    collectible.position.x = Math.random() * 16 - 8;
+                    collectible.position.y = 0.5;
+                    collectible.position.z = -Math.random() * 15 - 20;
+                    
+                    scene.add(collectible);
+                    collectibles.push(collectible);
+                }
+            }
+            
+            // Check if player is out of bounds
+            if (player.position.x < -10 || player.position.x > 10 || 
+                player.position.z < -30 || player.position.z > 10) {
+                gameOver();
+            }
+        }
+        
+        function boxCollision(box1, box2) {
+            const box1Bounds = {
+                xMin: box1.position.x - box1.geometry.parameters.width/2,
+                xMax: box1.position.x + box1.geometry.parameters.width/2,
+                yMin: box1.position.y - box1.geometry.parameters.height/2,
+                yMax: box1.position.y + box1.geometry.parameters.height/2,
+                zMin: box1.position.z - box1.geometry.parameters.depth/2,
+                zMax: box1.position.z + box1.geometry.parameters.depth/2
+            };
+            
+            const box2Bounds = {
+                xMin: box2.position.x - box2.geometry.parameters.width/2,
+                xMax: box2.position.x + box2.geometry.parameters.width/2,
+                yMin: box2.position.y - box2.geometry.parameters.height/2,
+                yMax: box2.position.y + box2.geometry.parameters.height/2,
+                zMin: box2.position.z - box2.geometry.parameters.depth/2,
+                zMax: box2.position.z + box2.geometry.parameters.depth/2
+            };
+            
+            return (box1Bounds.xMin <= box2Bounds.xMax && box1Bounds.xMax >= box2Bounds.xMin) &&
+                   (box1Bounds.yMin <= box2Bounds.yMax && box1Bounds.yMax >= box2Bounds.yMin) &&
+                   (box1Bounds.zMin <= box2Bounds.zMax && box1Bounds.zMax >= box2Bounds.zMin);
+        }
+        
+        function updatePlayerPosition() {
+            // Apply gravity
+            if (player.position.y > 0.4) {
+                playerVelocity.y -= gravity;
+            } else {
+                player.position.y = 0.4;
+                playerVelocity.y = 0;
+                isJumping = false;
+            }
+            
+            // Update position based on velocity
+            player.position.x += playerVelocity.x;
+            player.position.y += playerVelocity.y;
+            player.position.z += playerVelocity.z;
+            
+            // Update camera to follow player
+            camera.position.x = player.position.x;
+            camera.position.y = player.position.y + 3;
+            camera.position.z = player.position.z + 5;
+            camera.lookAt(player.position);
+        }
+        
+        function updateObjects() {
+            // Rotate collectibles
+            collectibles.forEach(collectible => {
+                collectible.rotation.x += 0.01;
+                collectible.rotation.y += 0.02;
+            });
+            
+            // Randomly move obstacles slightly
+            obstacles.forEach(obstacle => {
+                obstacle.rotation.y += 0.01;
+                if (Math.random() < 0.01) {
+                    obstacle.position.x += (Math.random() - 0.5) * 0.1;
+                    if (obstacle.position.x < -9) obstacle.position.x = -9;
+                    if (obstacle.position.x > 9) obstacle.position.x = 9;
+                }
+            });
+        }
+        
+        function gameOver() {
+            gameActive = false;
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+        
+        function restartGame() {
+            // Reset game state
+            score = 0;
+            document.getElementById('score').textContent = `Score: ${score}`;
+            document.getElementById('gameOver').style.display = 'none';
+            
+            // Reset player
+            player.position.set(0, 0.4, 0);
+            playerVelocity = { x: 0, y: 0, z: 0 };
+            isJumping = false;
+            
+            // Create new obstacles and collectibles
+            createObstacles();
+            createCollectibles();
+            
+            // Restart game
+            gameActive = true;
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            handleControls();
+            if (gameActive) {
+                updatePlayerPosition();
+                checkCollisions();
+                updateObjects();
+            }
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Start the game
+        init();
+    </script>
+</body>
+</html>
